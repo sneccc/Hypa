@@ -294,10 +294,12 @@ public sealed class RunCommandTests
         Assert.NotEqual(ExpectedShell, invocation.Executable);
     }
 
-    [Fact]
-    public async Task BufferedSingleQuotedRegexAnchor_UsesDirectInvocation()
+    [Theory]
+    [InlineData("'^(Alpha|Delta)$'")]
+    [InlineData("\"^(Alpha|Delta)$\"")]
+    public async Task BufferedQuotedRegexAnchor_UsesDirectInvocation(string quotedPattern)
     {
-        var command = "rg -n -e '^(Alpha|Delta)$' -- sample.txt";
+        var command = $"rg -n -e {quotedPattern} -- sample.txt";
         var (root, runner) = BuildRoot();
         CommandInvocation? invocation = null;
         runner.RunAsync(Arg.Do<CommandInvocation>(i => invocation = i), Arg.Any<CancellationToken>())

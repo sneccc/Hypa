@@ -18,12 +18,16 @@ public sealed class ShellExpansionTests
         Assert.True(result);
     }
 
-    [Fact]
-    public void ContainsExpansion_SingleQuotedDollar_ReturnsFalse()
+    [Theory]
+    [InlineData("'^(Alpha|Delta)$'")]
+    [InlineData("\"^(Alpha|Delta)$\"")]
+    [InlineData("\"literal $\"")]
+    [InlineData("\"\\$HOME\"")]
+    public void ContainsExpansion_QuotedLiteralDollar_ReturnsFalse(string value)
     {
         var tokens = new[]
         {
-            new ShellToken(TokenKind.QuotedArg, "'^(Alpha|Delta)$'", 0),
+            new ShellToken(TokenKind.QuotedArg, value, 0),
         };
 
         var result = ShellExpansion.ContainsExpansion(tokens);

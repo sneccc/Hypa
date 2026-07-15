@@ -13,8 +13,31 @@ public static class ShellExpansion
             token.Value.StartsWith('"') &&
             ContainsExpansionMarker(token.Value));
 
-    private static bool ContainsExpansionMarker(string value) =>
-        value.Contains('$') || value.Contains('`');
+    private static bool ContainsExpansionMarker(string value)
+    {
+        var start = value.Length > 0 && value[0] is '\'' or '"' ? 1 : 0;
+        var end = value.Length > start && value[^1] == value[0] ? value.Length - 1 : value.Length;
+
+        for (var i = start; i < end; i++)
+        {
+            if (value[i] == '\\' && i + 1 < end)
+            {
+                i++;
+                continue;
+            }
+
+            if (value[i] == '`')
+                return true;
+
+            if (value[i] == '$' && i + 1 < end && IsDollarExpansionStart(value[i + 1]))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsDollarExpansionStart(char ch) =>
+        char.IsAsciiLetterOrDigit(ch) || ch is '_' or '{' or '(' or '?' or '#' or '@' or '*' or '-' or '$' or '!';
 
     /// <summary>
     /// Detects unquoted argument tokens that are POSIX tilde words:
