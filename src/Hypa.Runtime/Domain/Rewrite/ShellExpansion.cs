@@ -8,8 +8,13 @@ public static class ShellExpansion
 {
     public static bool ContainsExpansion(IReadOnlyList<ShellToken> tokens) =>
         tokens.Any(token =>
-            token.Kind is TokenKind.Arg or TokenKind.QuotedArg &&
-            (token.Value.Contains('$') || token.Value.Contains('`')));
+            token.Kind == TokenKind.Arg && ContainsExpansionMarker(token.Value) ||
+            token.Kind == TokenKind.QuotedArg &&
+            token.Value.StartsWith('"') &&
+            ContainsExpansionMarker(token.Value));
+
+    private static bool ContainsExpansionMarker(string value) =>
+        value.Contains('$') || value.Contains('`');
 
     /// <summary>
     /// Detects unquoted argument tokens that are POSIX tilde words:

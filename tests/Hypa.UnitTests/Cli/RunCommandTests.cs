@@ -295,6 +295,24 @@ public sealed class RunCommandTests
     }
 
     [Fact]
+    public async Task BufferedSingleQuotedRegexAnchor_UsesDirectInvocation()
+    {
+        var command = "rg -n -e '^(Alpha|Delta)$' -- sample.txt";
+        var (root, runner) = BuildRoot();
+        CommandInvocation? invocation = null;
+        runner.RunAsync(Arg.Do<CommandInvocation>(i => invocation = i), Arg.Any<CancellationToken>())
+            .Returns(Result<CommandOutput, Error>.Ok(
+                CommandOutput.Captured("ok", "", 0, TimeSpan.Zero)));
+
+        var exitCode = await root.InvokeAsync(["-c", command]);
+
+        Assert.Equal(0, exitCode);
+        Assert.NotNull(invocation);
+        Assert.Equal("rg", invocation.Executable);
+        Assert.Equal(["-n", "-e", "^(Alpha|Delta)$", "--", "sample.txt"], invocation.Arguments);
+    }
+
+    [Fact]
     public async Task BufferedPlainCommand_UsesDirectInvocation()
     {
         var (root, runner) = BuildRoot();

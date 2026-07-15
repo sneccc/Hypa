@@ -19,6 +19,19 @@ public sealed class ShellExpansionTests
     }
 
     [Fact]
+    public void ContainsExpansion_SingleQuotedDollar_ReturnsFalse()
+    {
+        var tokens = new[]
+        {
+            new ShellToken(TokenKind.QuotedArg, "'^(Alpha|Delta)$'", 0),
+        };
+
+        var result = ShellExpansion.ContainsExpansion(tokens);
+
+        Assert.False(result);
+    }
+
+    [Fact]
     public void ContainsExpansion_UnquotedDollar_ReturnsTrue()
     {
         var tokens = new[]
