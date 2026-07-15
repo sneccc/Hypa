@@ -1,7 +1,16 @@
 import test from "node:test";
 import { homedir } from "node:os";
 import assert from "node:assert/strict";
-import { buildFindCommand, buildGrepCommand, buildLsCommand, buildReadCommand, limitStdoutLines, shellQuote } from "../extensions/tools.js";
+import {
+  buildFindCommand,
+  buildGrepArgs,
+  buildGrepCommand,
+  buildLsCommand,
+  buildReadCommand,
+  limitApproxTokens,
+  limitStdoutLines,
+  shellQuote,
+} from "../extensions/tools.js";
 
 test("shellQuote protects spaces and single quotes on POSIX", () => {
   assert.equal(shellQuote("simple/path", "linux"), "simple/path");
@@ -44,6 +53,34 @@ test("buildGrepCommand treats dash-leading patterns as data via -e", () => {
   assert.match(command, /\s-e\s--help\s--\s/);
 });
 
+test("buildGrepArgs preserves regex metacharacters as one argv value", () => {
+  const args = buildGrepArgs({
+    pattern: "^(Alpha|Delta)$",
+    path: "folder with spaces/sample file.txt",
+    glob: "*.txt",
+    ignoreCase: true,
+    context: 2,
+    limit: 3,
+  });
+
+  assert.deepEqual(args, [
+    "--heading",
+    "--line-number",
+    "--color=never",
+    "--ignore-case",
+    "--context",
+    "2",
+    "--max-count",
+    "3",
+    "--glob",
+    "*.txt",
+    "-e",
+    "^(Alpha|Delta)$",
+    "--",
+    "folder with spaces/sample file.txt",
+  ]);
+});
+
 test("buildFindCommand lists files with ripgrep", () => {
   assert.equal(buildFindCommand({}), "rg --files --glob '*' .");
   assert.equal(buildFindCommand({ pattern: "*.cs", path: "src" }), "rg --files --glob '*.cs' src");
@@ -81,6 +118,23 @@ test("limitStdoutLines floors and clamps limit to at least 1", () => {
   assert.equal(limitStdoutLines("a\nb\nc\n", 2.9), "a\nb\n");
   assert.equal(limitStdoutLines("a\nb\n", 0), "a\n");
   assert.equal(limitStdoutLines("a\nb\n", -3), "a\n");
+});
+
+test("limitApproxTokens leaves output unchanged without a budget or below it", () => {
+  assert.equal(limitApproxTokens("abcdef"), "abcdef");
+  assert.equal(limitApproxTokens("abcdef", 2), "abcdef");
+});
+
+test("limitApproxTokens applies a four-character approximate token budget", () => {
+  const output = limitApproxTokens("abcdefghijklmnopqrstuvwxyz", 5);
+  assert.equal(output, "abcde\n...[truncated]");
+  assert.equal(output.length, 20);
+});
+
+test("limitApproxTokens floors and clamps very small budgets", () => {
+  assert.equal(limitApproxTokens("abcdefgh", 1), "abcd");
+  assert.equal(limitApproxTokens("abcdefgh", 0), "abcd");
+  assert.equal(limitApproxTokens("abcdefgh", -3), "abcd");
 });
 
 test("normalizePathArg expands a leading ~ to the home directory", () => {

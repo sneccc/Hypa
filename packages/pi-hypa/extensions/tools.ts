@@ -186,7 +186,7 @@ export function buildReadCommand(path: string, offset?: number, limit?: number):
   return `cat -- ${quotedPath}`;
 }
 
-export function buildGrepCommand(params: {
+interface GrepCommandParams {
   pattern: string;
   path?: string;
   glob?: string;
@@ -194,17 +194,23 @@ export function buildGrepCommand(params: {
   literal?: boolean;
   context?: number;
   limit?: number;
-}): string {
-  const args = ["rg", "--heading", "--line-number", "--color=never"];
+}
+
+export function buildGrepArgs(params: GrepCommandParams): string[] {
+  const args = ["--heading", "--line-number", "--color=never"];
   if (params.ignoreCase) args.push("--ignore-case");
   if (params.literal) args.push("--fixed-strings");
   if (params.context !== undefined) args.push("--context", String(Math.max(0, Math.floor(params.context))));
   if (params.limit !== undefined) args.push("--max-count", String(Math.max(1, Math.floor(params.limit))));
   if (params.glob) args.push("--glob", params.glob);
-  // -e treats the pattern as data (even if it starts with '-'); -- ends options before the path
+  // -e treats the pattern as data (even if it starts with '-'); -- ends options before the path.
   args.push("-e", params.pattern, "--", normalizePathArg(params.path ?? "."));
-  // Explicit arrow: shellQuote's second param is platformName, not Array.map's index
-  return args.map((a) => shellQuote(a)).join(" ");
+  return args;
+}
+
+export function buildGrepCommand(params: GrepCommandParams): string {
+  // Explicit arrow: shellQuote's second param is platformName, not Array.map's index.
+  return ["rg", ...buildGrepArgs(params)].map((arg) => shellQuote(arg)).join(" ");
 }
 
 /**
@@ -226,6 +232,17 @@ export function limitStdoutLines(stdout: string, limit?: number): string {
   const max = Math.max(1, Math.floor(limit));
   const lines = stdout.split(/\r?\n/).filter((line) => line.length > 0);
   return lines.slice(0, max).join("\n") + (lines.length > 0 ? "\n" : "");
+}
+
+/** Apply the tool's documented approximate token budget after Hypa processing. */
+export function limitApproxTokens(stdout: string, maxTokens?: number): string {
+  if (maxTokens === undefined) return stdout;
+  const maxChars = Math.max(1, Math.floor(maxTokens)) * 4;
+  if (stdout.length <= maxChars) return stdout;
+
+  const marker = "\n...[truncated]";
+  if (marker.length >= maxChars) return stdout.slice(0, maxChars);
+  return stdout.slice(0, maxChars - marker.length) + marker;
 }
 
 export function buildLsCommand(params: { path?: string; all?: boolean; long?: boolean }): string {
@@ -424,9 +441,12 @@ export function registerHypaTools(pi: PiApi, config: HypaPiConfig) {
     parameters: readSchema,
     async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
       const command = buildReadCommand(params.path, params.offset, params.limit);
-      const timeoutMs = params.maxTokens ? undefined : undefined;
-      const result = await runHypaCommand(pi, config, command, timeoutMs, false, signal);
-      return toToolText(result, command);
+      const result = await runHypaCommand(pi, config, command, undefined, false, signal);
+      const limited = {
+        ...result,
+        stdout: limitApproxTokens(result.stdout, params.maxTokens),
+      };
+      return toToolText(limited, command);
     },
     renderCall(args: any, theme: any) {
       return renderHypaReadCall(args ?? {}, theme);
@@ -443,8 +463,14 @@ export function registerHypaTools(pi: PiApi, config: HypaPiConfig) {
     promptSnippet: "Search file contents through Hypa compression",
     parameters: grepSchema,
     async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
-      const command = buildGrepCommand(params as { pattern: string; path?: string; glob?: string; ignoreCase?: boolean; literal?: boolean; context?: number; limit?: number });
-      const result = await runHypaCommand(pi, config, command, params.timeoutMs, false, signal);
+      const grepParams = params as GrepCommandParams;
+      const command = buildGrepCommand(grepParams);
+      // Hypa's Windows shell lexer can reinterpret regex metacharacters such as
+      // alternation pipes even when quoted. Execute rg with an argv array on
+      // Windows so patterns remain data; keep Hypa compression on other hosts.
+      const result = platform() === "win32"
+        ? await pi.exec("rg", buildGrepArgs(grepParams), { signal, timeout: params.timeoutMs })
+        : await runHypaCommand(pi, config, command, params.timeoutMs, false, signal);
       return toToolText(result, command);
     },
     renderCall(args: any, theme: any) {
