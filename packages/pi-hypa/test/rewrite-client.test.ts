@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { win32 } from "node:path";
+import { join, win32 } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   resolveHypaBinary,
@@ -143,6 +143,28 @@ test("resolveHypaBinary prefers Windows .cmd over extension-less npm shim", () =
 
   assert.equal(resolved.toLowerCase(), cmd.toLowerCase());
   assert.notEqual(resolved.toLowerCase(), shim.toLowerCase());
+});
+
+test("resolveHypaBinary prefers bundled native over Windows PATH cmd shim", () => {
+  const binDir = "C:\\Program Files\\nodejs";
+  const cmd = win32.resolve(binDir, "hypa.cmd");
+  const packageRoot = join("fake", "node_modules", "@hypabolic", "hypa-win32-x64");
+  const packageJson = join(packageRoot, "package.json");
+  const native = join(packageRoot, "bin", "hypa.exe");
+  const requireResolve = (id: string) => {
+    if (id === "@hypabolic/hypa-win32-x64/package.json") return packageJson;
+    throw new Error(`unexpected resolve: ${id}`);
+  };
+
+  const resolved = resolveHypaBinary(
+    "hypa",
+    { PATH: binDir },
+    "win32",
+    fakeExists([cmd, native]),
+    requireResolve,
+  );
+
+  assert.equal(resolved.toLowerCase(), native.toLowerCase());
 });
 
 test("resolveHypaBinary prefers Windows .exe over .cmd in the same PATH directory", () => {
